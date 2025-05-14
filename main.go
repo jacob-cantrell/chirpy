@@ -1,11 +1,14 @@
 package main
 
-import "net/http"
+import (
+	"net/http"
+)
 
 func main() {
-	serveMux := http.NewServeMux
+	mux := http.NewServeMux()
+	mux.Handle("/", http.FileServer(http.Dir(".")))
 	server := http.Server{
-		Handler: serveMux(),
+		Handler: mux,
 		Addr:    ":8080",
 	}
 
