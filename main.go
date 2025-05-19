@@ -9,7 +9,9 @@ import (
 	"os"
 	"strings"
 	"sync/atomic"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/jacob-cantrell/chirpy/internal/database"
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
@@ -18,6 +20,14 @@ import (
 type apiConfig struct {
 	fileserverHits atomic.Int32
 	queries        *database.Queries
+	platform       string
+}
+
+type User struct {
+	ID        uuid.UUID `json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	Email     string    `json:"email"`
 }
 
 func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
@@ -35,15 +45,31 @@ func (cfg *apiConfig) handlerMetrics(w http.ResponseWriter, r *http.Request) {
 }
 
 func (cfg *apiConfig) handlerReset(w http.ResponseWriter, r *http.Request) {
+	// Reset server hit counter
 	_ = cfg.fileserverHits.Swap(0)
+
+	// Delete all users from user DB
+	err := cfg.queries.DeleteAllUsers(r.Context())
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Could not reset user database table")
+	}
+
+	// Write response
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.WriteHeader(http.StatusOK)
+	if cfg.platform == "dev" {
+		w.WriteHeader(http.StatusOK)
+	} else {
+		w.WriteHeader(http.StatusForbidden)
+	}
 }
 
 func respondWithError(w http.ResponseWriter, code int, msg string) {
+	// Response struct
 	type errorResponse struct {
 		Error string `json:"error"`
 	}
+
+	// Generate JSON for error response
 	respondWithJSON(w, code, errorResponse{
 		Error: msg,
 	})
@@ -73,25 +99,65 @@ func cleanString(msg string) string {
 	}
 
 	// Rejoin words into string and return it
-
 	return strings.Join(words, " ")
 }
 
 func main() {
 	godotenv.Load()
+	cfg := apiConfig{}
+
+	// Load .env variables
+	cfg.platform = os.Getenv("PLATFORM")
 	dbURL := os.Getenv("DB_URL")
+
+	// Open database
 	db, err := sql.Open("postgres", dbURL)
 	if err != nil {
 		log.Println(err)
 		os.Exit(1)
 	}
-	cfg := apiConfig{}
+	// Load SQLC generated queries into apiConfig
 	cfg.queries = database.New(db)
+
+	// Create ServeMux and HandleFunc for endpoints
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))
+	})
+	mux.HandleFunc("POST /api/users", func(w http.ResponseWriter, r *http.Request) {
+		// Request body
+		type parameters struct {
+			Email string `json:"email"`
+		}
+
+		// Decode JSON Request body
+		decoder := json.NewDecoder(r.Body)
+		params := parameters{}
+		err := decoder.Decode(&params)
+		if err != nil {
+			// Handle decode error
+			respondWithError(w, http.StatusInternalServerError, "Couldn't decode parameters")
+			return
+		}
+
+		// Execute SQL query to create user
+		dbUser, err := cfg.queries.CreateUser(r.Context(), params.Email)
+		if err != nil {
+			respondWithError(w, http.StatusInternalServerError, "Couldn't create user")
+			return
+		}
+
+		u := User{
+			ID:        dbUser.ID,
+			CreatedAt: dbUser.CreatedAt,
+			UpdatedAt: dbUser.UpdatedAt,
+			Email:     dbUser.Email,
+		}
+
+		// Respond with JSON
+		respondWithJSON(w, http.StatusCreated, u)
 	})
 	mux.HandleFunc("POST /api/validate_chirp", func(w http.ResponseWriter, r *http.Request) {
 		// Request body
