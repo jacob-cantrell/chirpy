@@ -32,7 +32,7 @@ func (cfg *apiConfig) handlerReset(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-func helperJsonResponse(w http.ResponseWriter, statusCode int, payload interface{}) {
+func encodeJsonResponse(w http.ResponseWriter, statusCode int, payload interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	dat, err := json.Marshal(payload)
 	if err != nil {
@@ -71,18 +71,18 @@ func main() {
 		err := decoder.Decode(&params)
 		if err != nil {
 			// Handle decode error
-			helperJsonResponse(w, http.StatusInternalServerError, errorRes{Error: "Couldn't decode parameters"})
+			encodeJsonResponse(w, http.StatusInternalServerError, errorRes{Error: "Couldn't decode parameters"})
 			return
 		}
 
 		// Check length of request, handle error
 		if len(params.Body) > 140 {
-			helperJsonResponse(w, http.StatusBadRequest, errorRes{Error: "Chirp is too long"})
+			encodeJsonResponse(w, http.StatusBadRequest, errorRes{Error: "Chirp is too long"})
 			return
 		}
 
 		// Encode response
-		helperJsonResponse(w, http.StatusOK, valid{Valid: true})
+		encodeJsonResponse(w, http.StatusOK, valid{Valid: true})
 	})
 	mux.HandleFunc("GET /admin/metrics", cfg.handlerMetrics)
 	mux.HandleFunc("POST /admin/reset", cfg.handlerReset)
