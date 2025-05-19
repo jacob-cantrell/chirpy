@@ -1,7 +1,9 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"sync/atomic"
 )
@@ -18,16 +20,28 @@ func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
 }
 
 func (cfg *apiConfig) handlerMetrics(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	count := cfg.fileserverHits.Load()
-	fmt.Fprintf(w, "Hits: %d", count)
+	fmt.Fprintf(w, "<html><body><h1>Welcome, Chirpy Admin</h1><p>Chirpy has been visited %d times!</p></body></html>", count)
 }
 
 func (cfg *apiConfig) handlerReset(w http.ResponseWriter, r *http.Request) {
 	_ = cfg.fileserverHits.Swap(0)
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
+}
+
+func helperJsonResponse(w http.ResponseWriter, statusCode int, payload interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	dat, err := json.Marshal(payload)
+	if err != nil {
+		log.Printf("Error marshalling JSON: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+	w.WriteHeader(statusCode)
+	w.Write(dat)
 }
 
 func main() {
@@ -38,8 +52,40 @@ func main() {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))
 	})
-	mux.HandleFunc("GET /api/metrics", cfg.handlerMetrics)
-	mux.HandleFunc("POST /api/reset", cfg.handlerReset)
+	mux.HandleFunc("POST /api/validate_chirp", func(w http.ResponseWriter, r *http.Request) {
+		// Request body
+		type parameters struct {
+			Body string `json:"body"`
+		}
+		// Response body posibilities
+		type valid struct {
+			Valid bool `json:"valid"`
+		}
+		type errorRes struct {
+			Error string `json:"error"`
+		}
+
+		// Decode json
+		decoder := json.NewDecoder(r.Body)
+		params := parameters{}
+		err := decoder.Decode(&params)
+		if err != nil {
+			// Handle decode error
+			helperJsonResponse(w, http.StatusInternalServerError, errorRes{Error: "Couldn't decode parameters"})
+			return
+		}
+
+		// Check length of request, handle error
+		if len(params.Body) > 140 {
+			helperJsonResponse(w, http.StatusBadRequest, errorRes{Error: "Chirp is too long"})
+			return
+		}
+
+		// Encode response
+		helperJsonResponse(w, http.StatusOK, valid{Valid: true})
+	})
+	mux.HandleFunc("GET /admin/metrics", cfg.handlerMetrics)
+	mux.HandleFunc("POST /admin/reset", cfg.handlerReset)
 	mux.Handle("/app/", http.StripPrefix("/app", cfg.middlewareMetricsInc(http.FileServer(http.Dir(".")))))
 	server := http.Server{
 		Handler: mux,
