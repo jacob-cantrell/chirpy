@@ -134,6 +134,53 @@ func main() {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))
 	})
+	mux.HandleFunc("GET /api/chirps", func(w http.ResponseWriter, r *http.Request) {
+		//  Execute sql query
+		dbChirps, err := cfg.queries.GetAllChirps(r.Context())
+		if err != nil {
+			respondWithError(w, http.StatusInternalServerError, "Couldn't retrieve chirps records")
+		}
+
+		// Map to json; intiailize array
+		var chirps []Chirp
+		for _, c := range dbChirps {
+			chirps = append(chirps, Chirp{
+				ID:        c.ID,
+				CreatedAt: c.CreatedAt,
+				UpdatedAt: c.UpdatedAt,
+				Body:      c.Body,
+				UserID:    c.UserID,
+			})
+		}
+
+		// Response
+		respondWithJSON(w, http.StatusOK, chirps)
+	})
+	mux.HandleFunc("GET /api/chirps/{chirpID}", func(w http.ResponseWriter, r *http.Request) {
+		// Get ID passed in
+		chirpID, err := uuid.Parse(r.PathValue("chirpID"))
+		if err != nil {
+			respondWithError(w, http.StatusInternalServerError, "Could not parse path value")
+		}
+
+		// Execute sql query
+		dbChirp, err := cfg.queries.GetChirpById(r.Context(), chirpID)
+		if err != nil {
+			respondWithError(w, http.StatusNotFound, "Could not retrieve chirp with given ID")
+		}
+
+		// Map to json
+		chirp := Chirp{
+			ID:        dbChirp.ID,
+			CreatedAt: dbChirp.CreatedAt,
+			UpdatedAt: dbChirp.UpdatedAt,
+			Body:      dbChirp.Body,
+			UserID:    dbChirp.UserID,
+		}
+
+		// Response
+		respondWithJSON(w, http.StatusOK, chirp)
+	})
 	mux.HandleFunc("POST /api/users", func(w http.ResponseWriter, r *http.Request) {
 		// Request body
 		type parameters struct {
