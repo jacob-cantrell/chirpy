@@ -30,6 +30,14 @@ type User struct {
 	Email     string    `json:"email"`
 }
 
+type Chirp struct {
+	ID        uuid.UUID `json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	Body      string    `json:"body"`
+	UserID    uuid.UUID `json:"user_id"`
+}
+
 func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		cfg.fileserverHits.Add(1)
@@ -149,6 +157,7 @@ func main() {
 			return
 		}
 
+		// Map to json
 		u := User{
 			ID:        dbUser.ID,
 			CreatedAt: dbUser.CreatedAt,
@@ -159,14 +168,11 @@ func main() {
 		// Respond with JSON
 		respondWithJSON(w, http.StatusCreated, u)
 	})
-	mux.HandleFunc("POST /api/validate_chirp", func(w http.ResponseWriter, r *http.Request) {
-		// Request body
+	mux.HandleFunc("POST /api/chirps", func(w http.ResponseWriter, r *http.Request) {
+		// Request body struct
 		type parameters struct {
-			Body string `json:"body"`
-		}
-		// Response body posibilities
-		type valid struct {
-			Cleaned_Body string `json:"cleaned_body"`
+			Body   string    `json:"body"`
+			UserID uuid.UUID `json:"user_id"`
 		}
 
 		// Decode json
@@ -185,8 +191,28 @@ func main() {
 			return
 		}
 
-		// Encode response
-		respondWithJSON(w, http.StatusOK, valid{Cleaned_Body: cleanString(params.Body)})
+		// Valid chirp, create params & execute query
+		chirpParams := database.CreateChirpParams{
+			Body:   params.Body,
+			UserID: params.UserID,
+		}
+		dbChirp, err := cfg.queries.CreateChirp(r.Context(), chirpParams)
+		if err != nil {
+			respondWithError(w, http.StatusInternalServerError, "Couldn't create chirp record")
+			return
+		}
+
+		// Map to json
+		c := Chirp{
+			ID:        dbChirp.ID,
+			CreatedAt: dbChirp.CreatedAt,
+			UpdatedAt: dbChirp.UpdatedAt,
+			Body:      cleanString(dbChirp.Body),
+			UserID:    dbChirp.UserID,
+		}
+
+		// Respond with JSON & created status code
+		respondWithJSON(w, http.StatusCreated, c)
 	})
 	mux.HandleFunc("GET /admin/metrics", cfg.handlerMetrics)
 	mux.HandleFunc("POST /admin/reset", cfg.handlerReset)
