@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"sync/atomic"
 )
 
@@ -32,7 +33,16 @@ func (cfg *apiConfig) handlerReset(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-func encodeJsonResponse(w http.ResponseWriter, statusCode int, payload interface{}) {
+func respondWithError(w http.ResponseWriter, code int, msg string) {
+	type errorResponse struct {
+		Error string `json:"error"`
+	}
+	respondWithJSON(w, code, errorResponse{
+		Error: msg,
+	})
+}
+
+func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	dat, err := json.Marshal(payload)
 	if err != nil {
@@ -40,8 +50,24 @@ func encodeJsonResponse(w http.ResponseWriter, statusCode int, payload interface
 		w.WriteHeader(500)
 		return
 	}
-	w.WriteHeader(statusCode)
+	w.WriteHeader(code)
 	w.Write(dat)
+}
+
+func cleanString(msg string) string {
+	// Split string
+	words := strings.Split(msg, " ")
+
+	// Loop through words
+	for i := range words {
+		if strings.ToLower(words[i]) == "kerfuffle" || strings.ToLower(words[i]) == "sharbert" || strings.ToLower(words[i]) == "fornax" {
+			words[i] = "****"
+		}
+	}
+
+	// Rejoin words into string and return it
+
+	return strings.Join(words, " ")
 }
 
 func main() {
@@ -59,10 +85,7 @@ func main() {
 		}
 		// Response body posibilities
 		type valid struct {
-			Valid bool `json:"valid"`
-		}
-		type errorRes struct {
-			Error string `json:"error"`
+			Cleaned_Body string `json:"cleaned_body"`
 		}
 
 		// Decode json
@@ -71,18 +94,18 @@ func main() {
 		err := decoder.Decode(&params)
 		if err != nil {
 			// Handle decode error
-			encodeJsonResponse(w, http.StatusInternalServerError, errorRes{Error: "Couldn't decode parameters"})
+			respondWithError(w, http.StatusInternalServerError, "Couldn't decode parameters")
 			return
 		}
 
 		// Check length of request, handle error
 		if len(params.Body) > 140 {
-			encodeJsonResponse(w, http.StatusBadRequest, errorRes{Error: "Chirp is too long"})
+			respondWithError(w, http.StatusBadRequest, "Chirp is too long")
 			return
 		}
 
 		// Encode response
-		encodeJsonResponse(w, http.StatusOK, valid{Valid: true})
+		respondWithJSON(w, http.StatusOK, valid{Cleaned_Body: cleanString(params.Body)})
 	})
 	mux.HandleFunc("GET /admin/metrics", cfg.handlerMetrics)
 	mux.HandleFunc("POST /admin/reset", cfg.handlerReset)
