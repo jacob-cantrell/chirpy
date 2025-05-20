@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jacob-cantrell/chirpy/internal/auth"
 	"github.com/jacob-cantrell/chirpy/internal/database"
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
@@ -184,7 +185,8 @@ func main() {
 	mux.HandleFunc("POST /api/users", func(w http.ResponseWriter, r *http.Request) {
 		// Request body
 		type parameters struct {
-			Email string `json:"email"`
+			Email    string `json:"email"`
+			Password string `json:"password"`
 		}
 
 		// Decode JSON Request body
@@ -197,8 +199,18 @@ func main() {
 			return
 		}
 
+		// Get hashed password
+		hPw, err := auth.HashPassword(params.Password)
+		if err != nil {
+			respondWithError(w, http.StatusInternalServerError, "Couldn't hash password")
+		}
+
 		// Execute SQL query to create user
-		dbUser, err := cfg.queries.CreateUser(r.Context(), params.Email)
+		userParams := database.CreateUserParams{
+			Email:          params.Email,
+			HashedPassword: hPw,
+		}
+		dbUser, err := cfg.queries.CreateUser(r.Context(), userParams)
 		if err != nil {
 			respondWithError(w, http.StatusInternalServerError, "Couldn't create user")
 			return
@@ -260,6 +272,47 @@ func main() {
 
 		// Respond with JSON & created status code
 		respondWithJSON(w, http.StatusCreated, c)
+	})
+	mux.HandleFunc("POST /api/login", func(w http.ResponseWriter, r *http.Request) {
+		// Request body
+		type parameters struct {
+			Email    string `json:"email"`
+			Password string `json:"password"`
+		}
+
+		// Decode JSON Request body
+		decoder := json.NewDecoder(r.Body)
+		params := parameters{}
+		err := decoder.Decode(&params)
+		if err != nil {
+			// Handle decode error
+			respondWithError(w, http.StatusInternalServerError, "Couldn't decode parameters")
+			return
+		}
+
+		// Exec GetUserByEmail query
+		dbUser, err := cfg.queries.GetUserByEmail(r.Context(), params.Email)
+		if err != nil {
+			respondWithError(w, http.StatusUnauthorized, "Incorrect email or password")
+			return
+		}
+
+		// Compare passwords
+		if err := auth.CheckPasswordHash(dbUser.HashedPassword, params.Password); err != nil {
+			respondWithError(w, http.StatusUnauthorized, "Incorrect email or password")
+			return
+		}
+
+		// Map to json
+		u := User{
+			ID:        dbUser.ID,
+			CreatedAt: dbUser.CreatedAt,
+			UpdatedAt: dbUser.UpdatedAt,
+			Email:     dbUser.Email,
+		}
+
+		// Response
+		respondWithJSON(w, http.StatusOK, u)
 	})
 	mux.HandleFunc("GET /admin/metrics", cfg.handlerMetrics)
 	mux.HandleFunc("POST /admin/reset", cfg.handlerReset)
