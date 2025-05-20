@@ -22,6 +22,7 @@ type apiConfig struct {
 	fileserverHits atomic.Int32
 	queries        *database.Queries
 	platform       string
+	secret         string
 }
 
 type User struct {
@@ -29,6 +30,7 @@ type User struct {
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 	Email     string    `json:"email"`
+	Token     string    `json:"token"`
 }
 
 type Chirp struct {
@@ -118,6 +120,7 @@ func main() {
 	// Load .env variables
 	cfg.platform = os.Getenv("PLATFORM")
 	dbURL := os.Getenv("DB_URL")
+	cfg.secret = os.Getenv("SECRET")
 
 	// Open database
 	db, err := sql.Open("postgres", dbURL)
@@ -230,8 +233,7 @@ func main() {
 	mux.HandleFunc("POST /api/chirps", func(w http.ResponseWriter, r *http.Request) {
 		// Request body struct
 		type parameters struct {
-			Body   string    `json:"body"`
-			UserID uuid.UUID `json:"user_id"`
+			Body string `json:"body"`
 		}
 
 		// Decode json
@@ -244,6 +246,20 @@ func main() {
 			return
 		}
 
+		// Check bearer token
+		tokString, err := auth.GetBearerToken(r.Header)
+		if err != nil {
+			respondWithError(w, http.StatusUnauthorized, "No valid Bearer token in Authorization header")
+			return
+		}
+
+		// Validate JWT
+		tok, err := auth.ValidateJWT(tokString, cfg.secret)
+		if err != nil {
+			respondWithError(w, http.StatusUnauthorized, "JWT validation failed")
+			return
+		}
+
 		// Check length of request, handle error
 		if len(params.Body) > 140 {
 			respondWithError(w, http.StatusBadRequest, "Chirp is too long")
@@ -253,7 +269,7 @@ func main() {
 		// Valid chirp, create params & execute query
 		chirpParams := database.CreateChirpParams{
 			Body:   params.Body,
-			UserID: params.UserID,
+			UserID: tok,
 		}
 		dbChirp, err := cfg.queries.CreateChirp(r.Context(), chirpParams)
 		if err != nil {
@@ -276,8 +292,9 @@ func main() {
 	mux.HandleFunc("POST /api/login", func(w http.ResponseWriter, r *http.Request) {
 		// Request body
 		type parameters struct {
-			Email    string `json:"email"`
-			Password string `json:"password"`
+			Email            string `json:"email"`
+			Password         string `json:"password"`
+			ExpiresInSeconds *int   `json:"expires_in_seconds"`
 		}
 
 		// Decode JSON Request body
@@ -303,12 +320,31 @@ func main() {
 			return
 		}
 
+		// Check expires_in_seconds time, set default or to max
+		expiration := time.Hour             //default
+		if params.ExpiresInSeconds != nil { //given value
+			timeConverted := time.Second * time.Duration((*params.ExpiresInSeconds))
+			if timeConverted > time.Hour {
+				expiration = time.Hour
+			} else {
+				expiration = timeConverted
+			}
+		}
+
+		// Create token
+		tok, err := auth.MakeJWT(dbUser.ID, cfg.secret, expiration)
+		if err != nil {
+			respondWithError(w, http.StatusInternalServerError, "Error creating JWT token")
+			return
+		}
+
 		// Map to json
 		u := User{
 			ID:        dbUser.ID,
 			CreatedAt: dbUser.CreatedAt,
 			UpdatedAt: dbUser.UpdatedAt,
 			Email:     dbUser.Email,
+			Token:     tok,
 		}
 
 		// Response
