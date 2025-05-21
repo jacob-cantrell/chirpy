@@ -165,17 +165,78 @@ func main() {
 		// Response
 		respondWithJSON(w, http.StatusOK, chirps)
 	})
+	mux.HandleFunc("POST /api/chirps", func(w http.ResponseWriter, r *http.Request) {
+		// Request body struct
+		type parameters struct {
+			Body string `json:"body"`
+		}
+
+		// Decode json
+		decoder := json.NewDecoder(r.Body)
+		params := parameters{}
+		err := decoder.Decode(&params)
+		if err != nil {
+			// Handle decode error
+			respondWithError(w, http.StatusInternalServerError, "Couldn't decode parameters")
+			return
+		}
+
+		// Check bearer token
+		tokString, err := auth.GetBearerToken(r.Header)
+		if err != nil {
+			respondWithError(w, http.StatusUnauthorized, "No valid Bearer token in Authorization header")
+			return
+		}
+
+		// Validate JWT
+		tok, err := auth.ValidateJWT(tokString, cfg.secret)
+		if err != nil {
+			respondWithError(w, http.StatusUnauthorized, "JWT validation failed")
+			return
+		}
+
+		// Check length of request, handle error
+		if len(params.Body) > 140 {
+			respondWithError(w, http.StatusBadRequest, "Chirp is too long")
+			return
+		}
+
+		// Valid chirp, create params & execute query
+		chirpParams := database.CreateChirpParams{
+			Body:   params.Body,
+			UserID: tok,
+		}
+		dbChirp, err := cfg.queries.CreateChirp(r.Context(), chirpParams)
+		if err != nil {
+			respondWithError(w, http.StatusInternalServerError, "Couldn't create chirp record")
+			return
+		}
+
+		// Map to json
+		c := Chirp{
+			ID:        dbChirp.ID,
+			CreatedAt: dbChirp.CreatedAt,
+			UpdatedAt: dbChirp.UpdatedAt,
+			Body:      cleanString(dbChirp.Body),
+			UserID:    dbChirp.UserID,
+		}
+
+		// Respond with JSON & created status code
+		respondWithJSON(w, http.StatusCreated, c)
+	})
 	mux.HandleFunc("GET /api/chirps/{chirpID}", func(w http.ResponseWriter, r *http.Request) {
 		// Get ID passed in
 		chirpID, err := uuid.Parse(r.PathValue("chirpID"))
 		if err != nil {
 			respondWithError(w, http.StatusInternalServerError, "Could not parse path value")
+			return
 		}
 
 		// Execute sql query
 		dbChirp, err := cfg.queries.GetChirpById(r.Context(), chirpID)
 		if err != nil {
 			respondWithError(w, http.StatusNotFound, "Could not retrieve chirp with given ID")
+			return
 		}
 
 		// Map to json
@@ -189,6 +250,50 @@ func main() {
 
 		// Response
 		respondWithJSON(w, http.StatusOK, chirp)
+	})
+	mux.HandleFunc("DELETE /api/chirps/{chirpID}", func(w http.ResponseWriter, r *http.Request) {
+		// Get bearer token (required)
+		tokString, err := auth.GetBearerToken(r.Header)
+		if err != nil {
+			respondWithError(w, http.StatusUnauthorized, "No valid Bearer token in Authorization header")
+			return
+		}
+
+		// Validate JWT
+		userId, err := auth.ValidateJWT(tokString, cfg.secret)
+		if err != nil {
+			respondWithError(w, http.StatusUnauthorized, "JWT validation failed")
+			return
+		}
+
+		// Get ID passed in
+		chirpID, err := uuid.Parse(r.PathValue("chirpID"))
+		if err != nil {
+			respondWithError(w, http.StatusInternalServerError, "Could not parse path value")
+			return
+		}
+
+		// Get chirp by id
+		dbChirp, err := cfg.queries.GetChirpById(r.Context(), chirpID)
+		if err != nil {
+			respondWithError(w, http.StatusNotFound, "Could not retrieve chirp with given ID")
+			return
+		}
+
+		// Verify user id's match
+		if dbChirp.UserID != userId {
+			respondWithError(w, http.StatusForbidden, "User id does not match chirp's author id")
+			return
+		}
+
+		// Delete chirp
+		err = cfg.queries.DeleteChirpById(r.Context(), chirpID)
+		if err != nil {
+			respondWithError(w, http.StatusNotFound, "Could not retrieve chirp with given ID")
+			return
+		}
+
+		respondWithJSON(w, http.StatusNoContent, nil)
 	})
 	mux.HandleFunc("POST /api/users", func(w http.ResponseWriter, r *http.Request) {
 		// Request body
@@ -294,65 +399,6 @@ func main() {
 		}
 
 		respondWithJSON(w, http.StatusOK, u)
-	})
-	mux.HandleFunc("POST /api/chirps", func(w http.ResponseWriter, r *http.Request) {
-		// Request body struct
-		type parameters struct {
-			Body string `json:"body"`
-		}
-
-		// Decode json
-		decoder := json.NewDecoder(r.Body)
-		params := parameters{}
-		err := decoder.Decode(&params)
-		if err != nil {
-			// Handle decode error
-			respondWithError(w, http.StatusInternalServerError, "Couldn't decode parameters")
-			return
-		}
-
-		// Check bearer token
-		tokString, err := auth.GetBearerToken(r.Header)
-		if err != nil {
-			respondWithError(w, http.StatusUnauthorized, "No valid Bearer token in Authorization header")
-			return
-		}
-
-		// Validate JWT
-		tok, err := auth.ValidateJWT(tokString, cfg.secret)
-		if err != nil {
-			respondWithError(w, http.StatusUnauthorized, "JWT validation failed")
-			return
-		}
-
-		// Check length of request, handle error
-		if len(params.Body) > 140 {
-			respondWithError(w, http.StatusBadRequest, "Chirp is too long")
-			return
-		}
-
-		// Valid chirp, create params & execute query
-		chirpParams := database.CreateChirpParams{
-			Body:   params.Body,
-			UserID: tok,
-		}
-		dbChirp, err := cfg.queries.CreateChirp(r.Context(), chirpParams)
-		if err != nil {
-			respondWithError(w, http.StatusInternalServerError, "Couldn't create chirp record")
-			return
-		}
-
-		// Map to json
-		c := Chirp{
-			ID:        dbChirp.ID,
-			CreatedAt: dbChirp.CreatedAt,
-			UpdatedAt: dbChirp.UpdatedAt,
-			Body:      cleanString(dbChirp.Body),
-			UserID:    dbChirp.UserID,
-		}
-
-		// Respond with JSON & created status code
-		respondWithJSON(w, http.StatusCreated, c)
 	})
 	mux.HandleFunc("POST /api/login", func(w http.ResponseWriter, r *http.Request) {
 		// Request body
