@@ -235,6 +235,66 @@ func main() {
 		// Respond with JSON
 		respondWithJSON(w, http.StatusCreated, u)
 	})
+	mux.HandleFunc("PUT /api/users", func(w http.ResponseWriter, r *http.Request) {
+		// Request body
+		type parameters struct {
+			Email    string `json:"email"`
+			Password string `json:"password"`
+		}
+
+		// Decode JSON request body
+		decoder := json.NewDecoder(r.Body)
+		params := parameters{}
+		err := decoder.Decode(&params)
+		if err != nil {
+			// Handle decode error
+			respondWithError(w, http.StatusInternalServerError, "Couldn't decode parameters")
+			return
+		}
+
+		// Get bearer token (required)
+		tokString, err := auth.GetBearerToken(r.Header)
+		if err != nil {
+			respondWithError(w, http.StatusUnauthorized, "No valid Bearer token in Authorization header")
+			return
+		}
+
+		// Validate JWT
+		userId, err := auth.ValidateJWT(tokString, cfg.secret)
+		if err != nil {
+			respondWithError(w, http.StatusUnauthorized, "JWT validation failed")
+			return
+		}
+
+		// Get hashed password
+		hPw, err := auth.HashPassword(params.Password)
+		if err != nil {
+			respondWithError(w, http.StatusInternalServerError, "Couldn't hash password")
+		}
+
+		// Execute SQL query to update user
+		updatedUserParams := database.UpdateUserInformationParams{
+			Email:          params.Email,
+			HashedPassword: hPw,
+			ID:             userId,
+		}
+
+		dbUser, err := cfg.queries.UpdateUserInformation(r.Context(), updatedUserParams)
+		if err != nil {
+			respondWithError(w, http.StatusInternalServerError, "Error updating user information")
+			return
+		}
+
+		// Map to JSON & respond
+		u := User{
+			ID:        dbUser.ID,
+			CreatedAt: dbUser.CreatedAt,
+			UpdatedAt: dbUser.UpdatedAt,
+			Email:     dbUser.Email,
+		}
+
+		respondWithJSON(w, http.StatusOK, u)
+	})
 	mux.HandleFunc("POST /api/chirps", func(w http.ResponseWriter, r *http.Request) {
 		// Request body struct
 		type parameters struct {
