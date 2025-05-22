@@ -30,9 +30,9 @@ Some endpoints are authenticated endpoints and require an Authorization header i
 ## Schema
 Below is the schema structures for the 3 database tables utilized:
 #### Users
-name | type
+Name | Type
 :-----: | :-----:
-id | UUID
+id | UUID (PK)
 created_at | TIMESTAMP
 updated_at | TIMESTAMP
 email | TEXT
@@ -40,11 +40,20 @@ hashed_password | TEXT
 is_chirpy_red | BOOL
 
 #### Chirps
-id | created_at | updated_at | body | user_id
-:-----: | :-----: | :-----: | :-----: | :-----:
-UUID | TIMESTAMP | TIMESTAMP | TEXT | UUID 
+Name | Type
+:-----: | :-----:
+id | UUID (PK)
+created_at | TIMESTAMP
+updated_at | TIMESTAMP
+body | TEXT
+user_id | UUID (FK) 
 
 #### Refresh Tokens
-token | created_at | updated_at | user_id | expires_at | revoked_at
-:-----: | :-----: | :-----: | :-----: | :-----: | :-----:
-TEXT | TIMESTAMP | TIMESTAMP | UUID | TIMESTAMP | TIMESTAMP
+Name | Type
+:-----: | :-----:
+token | TEXT (PK)
+created_at | TIMESTAMP
+updated_at | TIMESTAMP
+user_id | UUID (FK)
+expires_at | TIMESTAMP
+revoked_at | TIMESTAMP
