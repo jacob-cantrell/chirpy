@@ -153,16 +153,33 @@ func main() {
 			respondWithError(w, http.StatusInternalServerError, "Couldn't retrieve chirps records")
 		}
 
-		// Map to json; intiailize array
-		var chirps []Chirp
-		for _, c := range dbChirps {
-			chirps = append(chirps, Chirp{
-				ID:        c.ID,
-				CreatedAt: c.CreatedAt,
-				UpdatedAt: c.UpdatedAt,
-				Body:      c.Body,
-				UserID:    c.UserID,
-			})
+		// Get optional author_id
+		authorId := r.URL.Query().Get("author_id")
+		var chirps []Chirp // initialize array of chirps
+
+		// If author_id is provided, map all chirps that match
+		if authorId != "" {
+			for _, c := range dbChirps {
+				if c.UserID.String() == authorId {
+					chirps = append(chirps, Chirp{
+						ID:        c.ID,
+						CreatedAt: c.CreatedAt,
+						UpdatedAt: c.UpdatedAt,
+						Body:      c.Body,
+						UserID:    c.UserID,
+					})
+				}
+			}
+		} else { // map all chirps
+			for _, c := range dbChirps {
+				chirps = append(chirps, Chirp{
+					ID:        c.ID,
+					CreatedAt: c.CreatedAt,
+					UpdatedAt: c.UpdatedAt,
+					Body:      c.Body,
+					UserID:    c.UserID,
+				})
+			}
 		}
 
 		// Response
