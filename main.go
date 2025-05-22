@@ -32,6 +32,7 @@ type User struct {
 	Email        string    `json:"email"`
 	Token        string    `json:"token"`
 	RefreshToken string    `json:"refresh_token"`
+	IsChirpyRed  bool      `json:"is_chirpy_red"`
 }
 
 type Chirp struct {
@@ -331,10 +332,11 @@ func main() {
 
 		// Map to json
 		u := User{
-			ID:        dbUser.ID,
-			CreatedAt: dbUser.CreatedAt,
-			UpdatedAt: dbUser.UpdatedAt,
-			Email:     dbUser.Email,
+			ID:          dbUser.ID,
+			CreatedAt:   dbUser.CreatedAt,
+			UpdatedAt:   dbUser.UpdatedAt,
+			Email:       dbUser.Email,
+			IsChirpyRed: dbUser.IsChirpyRed,
 		}
 
 		// Respond with JSON
@@ -392,10 +394,11 @@ func main() {
 
 		// Map to JSON & respond
 		u := User{
-			ID:        dbUser.ID,
-			CreatedAt: dbUser.CreatedAt,
-			UpdatedAt: dbUser.UpdatedAt,
-			Email:     dbUser.Email,
+			ID:          dbUser.ID,
+			CreatedAt:   dbUser.CreatedAt,
+			UpdatedAt:   dbUser.UpdatedAt,
+			Email:       dbUser.Email,
+			IsChirpyRed: dbUser.IsChirpyRed,
 		}
 
 		respondWithJSON(w, http.StatusOK, u)
@@ -465,6 +468,7 @@ func main() {
 			Email:        dbUser.Email,
 			Token:        tok,
 			RefreshToken: refreshTokString,
+			IsChirpyRed:  dbUser.IsChirpyRed,
 		}
 
 		// Response
@@ -527,6 +531,46 @@ func main() {
 		err = cfg.queries.RevokeRefreshTokenAccess(r.Context(), tokString)
 		if err != nil {
 			respondWithError(w, http.StatusInternalServerError, "Error revoking refresh token")
+			return
+		}
+
+		respondWithJSON(w, http.StatusNoContent, nil)
+	})
+	mux.HandleFunc("POST /api/polka/webhooks", func(w http.ResponseWriter, r *http.Request) {
+		// Request body
+		type WebhookData struct {
+			UserID string `json:"user_id"`
+		}
+
+		type WebhookRequest struct {
+			Event string      `json:"event"`
+			Data  WebhookData `json:"data"`
+		}
+
+		// Decode JSON request body
+		var webhookReq WebhookRequest
+		err := json.NewDecoder(r.Body).Decode(&webhookReq)
+		if err != nil {
+			respondWithError(w, http.StatusInternalServerError, "Couldn't decode parameters")
+			return
+		}
+
+		// Check event string
+		if webhookReq.Event != "user.upgraded" {
+			respondWithJSON(w, http.StatusNoContent, nil)
+			return
+		}
+
+		// Convert to UserId to UUID
+		userId, err := uuid.Parse(webhookReq.Data.UserID)
+		if err != nil {
+			respondWithError(w, http.StatusInternalServerError, "Error parsing userid string to uuid")
+			return
+		}
+
+		err = cfg.queries.SetChirpyRedByUserId(r.Context(), userId)
+		if err != nil {
+			respondWithError(w, http.StatusNotFound, "User not found in database")
 			return
 		}
 
