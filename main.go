@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"sort"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -153,7 +154,7 @@ func main() {
 			respondWithError(w, http.StatusInternalServerError, "Couldn't retrieve chirps records")
 		}
 
-		// Get optional author_id
+		// Get optional author_id query parameter
 		authorId := r.URL.Query().Get("author_id")
 		var chirps []Chirp // initialize array of chirps
 
@@ -180,6 +181,20 @@ func main() {
 					UserID:    c.UserID,
 				})
 			}
+		}
+
+		// Get optional sort query parameter
+		sortParam := r.URL.Query().Get("sort")
+		if sortParam == "" || sortParam == "asc" {
+			// Ascending sort (by created_at)
+			sort.Slice(chirps, func(i, j int) bool {
+				return chirps[i].CreatedAt.Before(chirps[j].CreatedAt)
+			})
+		} else {
+			// Descending sort (by created_at)
+			sort.Slice(chirps, func(i, j int) bool {
+				return chirps[i].CreatedAt.After(chirps[j].CreatedAt)
+			})
 		}
 
 		// Response
