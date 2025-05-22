@@ -23,6 +23,7 @@ type apiConfig struct {
 	queries        *database.Queries
 	platform       string
 	secret         string
+	polkaKey       string
 }
 
 type User struct {
@@ -127,6 +128,7 @@ func main() {
 	cfg.platform = os.Getenv("PLATFORM")
 	dbURL := os.Getenv("DB_URL")
 	cfg.secret = os.Getenv("SECRET")
+	cfg.polkaKey = os.Getenv("POLKA_KEY")
 
 	// Open database
 	db, err := sql.Open("postgres", dbURL)
@@ -547,9 +549,22 @@ func main() {
 			Data  WebhookData `json:"data"`
 		}
 
+		// Get ApiKey from header
+		apiKey, err := auth.GetAPIKey(r.Header)
+		if err != nil {
+			respondWithError(w, http.StatusUnauthorized, "No Authorization header present")
+			return
+		}
+
+		// Verify ApiKey in header matches ApiKey in .env
+		if apiKey != cfg.polkaKey {
+			respondWithError(w, http.StatusUnauthorized, "ApiKey in Authorization header does not match")
+			return
+		}
+
 		// Decode JSON request body
 		var webhookReq WebhookRequest
-		err := json.NewDecoder(r.Body).Decode(&webhookReq)
+		err = json.NewDecoder(r.Body).Decode(&webhookReq)
 		if err != nil {
 			respondWithError(w, http.StatusInternalServerError, "Couldn't decode parameters")
 			return
