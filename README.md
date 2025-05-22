@@ -30,9 +30,14 @@ Some endpoints are authenticated endpoints and require an Authorization header i
 ## Schema
 Below is the schema structures for the 3 database tables utilized:
 #### Users
-id | created_at | updated_at | email | hashed_password | is_chirpy_red
-:-----: | :-----: | :-----: | :-----: | :-----: | :-----: 
-UUID | TIMESTAMP | TIMESTAMP | TEXT | TEXT | BOOLEAN
+name | type
+:-----: | :-----:
+id | UUID
+created_at | TIMESTAMP
+updated_at | TIMESTAMP
+email | TEXT
+hashed_password | TEXT
+is_chirpy_red | BOOL
 
 #### Chirps
 id | created_at | updated_at | body | user_id
