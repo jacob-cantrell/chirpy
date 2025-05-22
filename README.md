@@ -7,14 +7,15 @@ Some endpoints are authenticated endpoints and require an Authorization header i
 #### User Endpoints
 `POST /api/users` - creates a new user; requires an Email & Password in request body; hashes password before storing in database\
 `PUT /api/users` - (authenticated) updates user information (requires Email & Password in request body) for current user\
-`POST /api/login` - logs in user provided required Email & Password in request body; creates a 1hr JWT and 60 day refresh token for the user if login is successful\
+`POST /api/login` - logs in user provided required Email & Password in request body; creates a 1hr JWT and 60 day refresh token for the user if login is successful
 #### Chirp Endpoints
-`GET /api/chirps?author_id?sort` - lists all chirps in database; can be filtered/sorted with optional query parameters\
+`GET /api/chirps?author_id?sort` - lists all chirps in database; can be filtered/sorted with optional query parameters
 - author_id (optional) -> only shows chirps for provided author_id
 - sort (optional) -> sorts by created_at timestamp ascending (default) or descending\
+<!-- end of the list -->
 `GET /api/chirps/{chirpID}` - lists chirp information by provided chirp's ID\
 `POST /api/chirps` - (authenticated) - creates a new chirp with provided information in request body (requires body) for currently logged-in user\
-`DELETE /api/chirps/{chirpID}` - (authenticated) deletes chirp with provided ID if the author is the currently logged-in user\
+`DELETE /api/chirps/{chirpID}` - (authenticated) deletes chirp with provided ID if the author is the currently logged-in user
 
 #### Webhooks
 `POST /api/polka/webhooks` - (authenticated) provided that the ApiKey in the Authorization header matches the .env ApiKey, then the user is upgraded to Chirpy Red provided the event in the request body is user.upgraded\
@@ -32,8 +33,8 @@ Below is the schema structures for the 3 database tables utilized:
 id | created_at | updated_at | email | hashed_password
 :-----: | :-----: | :-----: | :-----: | :-----: 
 UUID | TIMESTAMP | TIMESTAMP | TEXT | TEXT
-<\br>
+
 #### Chirps
 
-<\br>
+
 #### Refresh Tokens
